@@ -1,6 +1,6 @@
 require("dotenv").config();
 
-const { client, createTables, createUser, createItem } = require("./db");
+const { client, createTables, createUser, createItem, createReview } = require("./db");
 
 const seed = async () => {
   try {
@@ -12,12 +12,13 @@ const seed = async () => {
       createUser("Jane", "j_pwd"),
       createUser("Jackie", "j_pwd"),
       createUser("Amber", "a_pwd"),
+      createUser("Julia", "j_pw")
     ]);
     console.log("user created");
     const [Alberino, Nordstrom, Starbucks] = await Promise.all([
       createItem("Alberino", "restaurant"),
       createItem("Nordstrom", "retail store"),
-      createItem("Starbucks", "cafe"),
+      createItem("Starbucks", "cafe")
     ]);
     console.log("item created");
     client.end();
