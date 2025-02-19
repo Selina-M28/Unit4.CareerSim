@@ -54,35 +54,24 @@ const createItem = async (name,type) => {
     }
 }
 
-const createReview = async (review) => {
+const createReview = async (user, review) => {
     try {
-        const {userId,itemId, review_text, ranking} = review
+        const {itemId, review_text, ranking} = review
         const SQL = ` INSERT INTO reviews(id, user_id, item_id, review_text, ranking) VALUES ($1,$2,$3,$4,$5) RETURNING *;`;
-        const {rows} = await client.query(SQL, [uuid.v4(), userId, itemId, review_text, ranking]);
+        const {rows} = await client.query(SQL, [uuid.v4(), user.id, itemId, review_text, ranking]);
         return rows[0];
     } catch (err) {
         console.log(err);
     }
 }
 
-const createComment = async (comments) => {
+const createComment = async (userId,reviewId, comment) => {
     try {
-        const {userId,reviewId, comment} = comments
         const SQL = ` INSERT INTO comments(id, user_id, review_id, comment) VALUES ($1,$2,$3,$4) RETURNING *;`
         const {rows} = await client.query(SQL, [uuid.v4(),userId,reviewId, comment]);
-        return rows;
+        return rows [0];
     } catch (err) {
         console.log(err);
-    }
-}
-
-const fetchUserbyId = async () => {
-    try {
-        const SQL = `SELECT * FROM users;`
-        const { rows } = await client.query(SQL);
-        return rows;
-    } catch(err) {
-        console.error(err);
     }
 }
 
@@ -146,6 +135,32 @@ const fetchCommentsbyUser = async(id) => {
     }
 }
 
+const updateReview = async(reviewId, review_text,ranking) => {
+    try {
+        const SQL = `UPDATE reviews 
+                     SET review_text = $1, ranking = $2 
+                     WHERE id = $3
+                     RETURNING *;`;
+        const { rows } = await client.query(SQL, [review_text, ranking, reviewId]);
+        return rows[0];
+    } catch (err) { 
+        console.error(err);
+    }
+}
+
+const updateComment = async(commentId, comment) => {
+    try {
+        const SQL = `UPDATE comments 
+                     SET comment = $1
+                     WHERE id = $2
+                     RETURNING *;`;
+        const { rows } = await client.query(SQL, [comment, commentId]);
+        return rows[0];
+    } catch (err) { 
+        console.error(err);
+    }
+}
+
 const deleteReview = async (user_id, id) => {
     try {
         const SQL = `DELETE FROM reviews WHERE user_id = $1 AND id = $2;`
@@ -158,7 +173,7 @@ const deleteReview = async (user_id, id) => {
 
 const deleteComment = async (user_id, review_id, id) => {
     try {
-        const SQL = `DELETE FROM comments WHERE user_id = $1 AND review_id =$2 AND id = $3;`
+        const SQL = `DELETE FROM comments WHERE user_id = $1 AND review_id =$2 AND id = $3 RETURNING*;`
         await client.query(SQL, [user_id, review_id, id]);
         return true;
     } catch(err) {
@@ -192,27 +207,26 @@ const authenticate = async({username, password}) => {
 }
 
 const findUserByToken = async (token) => {
-    let id;
     try {
-      const payload = await jwt.verify(token, secret);
-      id = payload.id;
-    } catch (err) {
-      const error = Error("Not authorized!");
-      error.status = 401;
-      throw error;
-    }
+      const payload = jwt.verify(token, secret);
+   
     const SQL = `
       SELECT id, username
       FROM users
       WHERE id = $1
     `;
-    const response = await client.query(SQL, [id]);
+    const response = await client.query(SQL, [payload.id]);
     if (!response.rows.length) {
       const error = Error("not authorized");
       error.status = 401;
       throw error;
     }
-    return response.rows[0];
+    return response.rows[0]; 
+} catch (err) {
+      const error = Error("Not authorized!");
+      error.status = 401;
+      throw error;
+    }
   };
 
   const isLoggedIn = async (req, res, next) => {
@@ -224,6 +238,31 @@ const findUserByToken = async (token) => {
     }
   };
 
+  const register = async ({ username, password }) => {
+    try {
+      const userExistsQuery = `SELECT id FROM users WHERE username = $1`;
+      const userExists = await client.query(userExistsQuery, [username]);
+  
+      if (userExists.rows.length) {
+        const error = new Error("Username already taken");
+        error.status = 400;
+        throw error;
+      }
+  
+      const hashedPassword = await bcrypt.hash(password, 5); 
+ 
+      const SQL = `INSERT INTO users (id, username, password) VALUES ($1, $2, $3) RETURNING id, username`;
+      const { rows } = await client.query(SQL, [uuid.v4(), username, hashedPassword]);
+  
+      const token = jwt.sign({ id: rows[0].id }, secret);
+  
+      return { token };
+    } catch (err) {
+      console.error(err);
+      throw err;
+    }
+  };
+
 module.exports = { 
     client,
     createTables,
@@ -231,16 +270,19 @@ module.exports = {
     createItem,
     createReview,
     createComment,
-    fetchUserbyId,
     fetchItems,
     fetchItemsbyId,
     fetchReviewsbyUser,
     fetchAllReviewsbyItem,
     fetchSingleReviewbyItem,
     fetchCommentsbyUser,
+    findUserByToken,
+    updateReview,
     deleteReview,
     deleteComment,
     authenticate,
-    isLoggedIn
+    isLoggedIn,
+    register,
+    updateComment
     
 };
